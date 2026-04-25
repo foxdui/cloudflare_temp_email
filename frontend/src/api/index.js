@@ -62,8 +62,9 @@ const apiFetch = async (path, options = {}) => {
 const getOpenSettings = async (message, notification) => {
     try {
         const res = await api.fetch("/open_api/settings");
+        const domains = Array.isArray(res["domains"]) ? res["domains"] : [];
         const domainLabels = res["domainLabels"] || [];
-        if (res["domains"]?.length < 1) {
+        if (domains.length < 1) {
             message.error("No domains found, please check your worker settings");
         }
         Object.assign(openSettings.value, {
@@ -74,7 +75,8 @@ const getOpenSettings = async (message, notification) => {
             maxAddressLen: res["maxAddressLen"] || 30,
             needAuth: res["needAuth"] || false,
             defaultDomains: res["defaultDomains"] || [],
-            domains: res["domains"].map((domain, index) => {
+            randomSubdomainDomains: res["randomSubdomainDomains"] || [],
+            domains: domains.map((domain, index) => {
                 return {
                     label: domainLabels.length > index ? domainLabels[index] : domain,
                     value: domain

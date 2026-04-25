@@ -2,29 +2,97 @@
 # CHANGE LOG
 
 <p align="center">
-  <a href="CHANGELOG.md">🇨🇳 中文</a> |
-  <a href="CHANGELOG_EN.md">🇺🇸 English</a>
+  <a href="CHANGELOG.md">中文</a> |
+  <a href="CHANGELOG_EN.md">English</a>
 </p>
+
+## v1.8.0(main)
+
+### Features
+
+- feat: |API| Add server-side parsed-mail endpoints `/api/parsed_mails` and `/api/parsed_mail/:id` that return `sender` / `subject` / `text` / `html` / `attachments` metadata directly (reuses `commonParseMail`), so AI agents no longer need a client-side MIME parser
+- feat: |Skill| Bundle a read-only skill `cf-temp-mail-agent-mail` (`skills/cf-temp-mail-agent-mail/`) so AI agents like OpenClaw / Codex / Cursor can consume a mailbox with a user-supplied Address JWT + API base URL — list mails, poll verification codes, etc. — sidestepping the Turnstile challenge required to create a mailbox. Install via `npx degit dreamhunter2333/cloudflare_temp_email/skills/cf-temp-mail-agent-mail`
+- docs: |Docs| Add "AI Agent Mailbox Usage" doc (`guide/feature/agent-email`) covering the `parsed_mail` API and a local-parse fallback using `mail-parser-wasm` + `postal-mime` (mirrors the frontend) when parsed endpoints are unavailable
+
+### Bug Fixes
+
+- fix: |Frontend| Fix the frontend settings bootstrap throwing an `undefined` error when `/open_api/settings` does not return a `domains` array by normalizing the field to an empty array before mapping it
+
+### Improvements
+
+- refactor: |Worker| Split `mails_api/index.ts` and `admin_api/index.ts` so the index files only wire routes. Business logic moved into dedicated `*_api.ts` files (`mails_crud.ts` / `new_address.ts` / `parsed_mail_api.ts` / `address_api.ts` / `address_sender_api.ts` / `sendbox_api.ts` / `statistics_api.ts` / `account_settings_api.ts`). Paths and behavior unchanged
+
+## v1.7.0(main)
+
+### Breaking Changes
+
+- breaking: |send mail| `SEND_MAIL` semantics changed from a verified-address-only compatibility path to a normal fallback send channel. If an instance already binds `SEND_MAIL` and does not configure Resend/SMTP, recipients outside `verifiedAddressList` will now also be sent through the Cloudflare binding after upgrade, changing runtime behavior and cost routing
+
+### Features
+
+- feat: |send mail| Recommend Cloudflare `send_email` binding as the default send channel. Domains onboarded to Email Routing without Resend/SMTP now automatically use the binding to send to arbitrary addresses (Workers Paid includes 3,000 msgs/month, $0.35/1000 beyond); existing `verifiedAddressList` / Resend / SMTP configurations remain fully compatible (#964)
+
+### Bug Fixes
+
+- fix: |Send Mail| Auto-initialize the default send balance for addresses that have no `address_sender` row yet when `DEFAULT_SEND_BALANCE > 0`, on the first send-settings read or send API call (`ON CONFLICT DO NOTHING`). Existing rows — including admin-disabled or admin-edited ones — are never overwritten by the runtime path, so users no longer need to manually request send permission first (#925 #985)
+- fix: |User Mailbox| Fix an issue where the user center still showed delete actions and could still delete mail via `/user_api/mails/:id` when `ENABLE_USER_DELETE_EMAIL` was disabled (#978)
+- fix: |Address| Lowercase configured prefixes when creating addresses to avoid generating mixed-case mailbox names; existing data must be migrated to lowercase manually by the user (#930)
+
+### Improvements
+
+## v1.6.0(main)
+
+### Features
+
+- feat: |Admin| Add **IP Whitelist (strict mode)** to IP blacklist settings: when enabled, ONLY whitelisted IPs can access rate-limited APIs (create address, send mail, external send mail, user register, verify code); all other IPs are denied (#920)
+- feat: |Address| Support setting max address count to `0` for unlimited (#968)
+
+### Bug Fixes
+
+- fix: |Admin| Fix `D1_ERROR: LIKE or GLOB pattern too complex` on `/admin/address` and `/admin/users` when searching by full email address (query length pushes the LIKE pattern over D1's 50-byte limit). Long queries now fall back to `instr()` to bypass the LIKE pattern length cap (#956)
+
+### Improvements
+
+- docs: |Send Mail API| Clarify authentication differences between `/api/send_mail` and `/external/api/send_mail`, add "Address JWT" concept explanation (#922)
+- docs: |Worker Variables| Add generation instructions for `JWT_SECRET` (`openssl rand -hex 32`) (#932)
+- docs: |CLI Deployment| Add usage explanation for `routes` custom domain configuration (#932)
+- docs: |Admin API| Add `address_id` field to `/admin/new_address` response documentation (#912)
+- docs: |Admin| Add account list sorting feature documentation (#918)
+- docs: |Pages Deployment| Add SPA mode instructions to avoid 404 when refreshing or accessing sub-paths directly (#813)
+- docs: |Sidebar| Restructure documentation sidebar into "Core Configuration", "Notifications & Integrations", "Advanced Features", "Admin Console" groups
+- docs: |FAQ| Significantly expand FAQ with SPA 404, send balance, SMTP_CONFIG, mail client login and more (#919, #925, #839, #715, #921, #609)
+- docs: |Email Sending| Enhance SMTP_CONFIG field reference and multi-domain examples, add send balance mechanism documentation
+- docs: |Email Routing| Note that subdomains require Email Routing to be enabled separately; enabling it only on the apex domain does not cover subdomains (#969)
 
 ## v1.5.0(main)
 
 ### Features
 
+- feat: |Admin| Admin account list now supports column sorting (ID, name, created at, updated at, mail count, send count), search automatically resets pagination to page 1 (#918)
+- feat: |Admin API| `/admin/new_address` endpoint now returns `address_id` field, avoiding additional query after address creation (#912)
+- feat: |Create Address| Add `ENABLE_CREATE_ADDRESS_SUBDOMAIN_MATCH` switch and an admin-panel toggle for suffix-based subdomain matching in create-address APIs; when enabled, `foo.example.com` can match base domain `example.com`
 - feat: |Auto Reply| Add regex matching support for sender filter using `/pattern/` syntax (e.g. `/@example\.com$/`), backward compatible with prefix matching
 - feat: |Turnstile| Add global Turnstile CAPTCHA for all login forms via `ENABLE_GLOBAL_TURNSTILE_CHECK` env var (#767)
 - feat: |Telegram| Support sending email attachments in Telegram push (50MB per file limit), multiple attachments sent via `sendMediaGroup`, controlled by `ENABLE_TG_PUSH_ATTACHMENT` env var (#894)
+- feat: |Mail Storage| Support enabling gzip-compressed email storage via `ENABLE_MAIL_GZIP` variable (#823)
+  - Run database migration before enabling it: `Admin -> Quick Setup -> Database -> Migrate Database`, or call `POST /admin/db_migration`
+  - New emails are stored in `raw_blob` and reads stay compatible with `raw` / `raw_blob`; compression and decompression add CPU overhead, so a paid Worker plan is recommended
 
 ### Bug Fixes
 
 - fix: |Auto Reply| Fix auto-reply not triggering when `source_prefix` is empty string (#459), empty value now correctly matches all senders
 - fix: |OAuth2| Fix OAuth2 login callback failure on Android via browser and other mobile browsers due to sessionStorage loss during redirect, add localStorage fallback (#900)
+- fix: |IMAP| Fix nested reply email mojibake, Gmail empty Content-Type header parsing failure, missing Date header, and locale-dependent date formatting issues
 
 ### Testing
 
+- test: |E2E| Add create-address subdomain matching tests covering default exact-match behavior, admin-enabled matching, and env=false hard-disable precedence
 - test: |E2E| Add auto-reply trigger E2E tests covering empty prefix, prefix matching, regex matching, and disabled state
 
 ### Docs
 
+- docs: |Create Address| Update create-address API, worker variables, and subdomain docs to clarify the difference between explicitly specified subdomains and random subdomains
+- docs: |API| Add clarification between Address JWT and User JWT to avoid confusion; reorganize documentation menu structure with dedicated API Endpoints section (#910)
 - docs: |Telegram| Add per-user mail push and global push documentation (#769)
 - docs: |Webhook| Add webhook template examples for Telegram Bot, WeChat Work, Discord and other common push platforms
 - feat: |Webhook| Add Telegram Bot, WeChat Work, Discord preset templates to frontend webhook settings
