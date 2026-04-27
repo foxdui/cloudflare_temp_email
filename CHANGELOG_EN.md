@@ -10,13 +10,17 @@
 
 ### Features
 
+- feat: |Frontend| Add six-language frontend support (`zh` / `en` / `es` / `pt-BR` / `ja` / `de`), keep `zh` as the default locale; locale-unprefixed routes (for example `/` and `/user`) render in Chinese by default while still recording browser language as the stored preference. Explicit locale switches are persisted, and the current route, query string, and canonical locale URL stay in sync during switching
 - feat: |API| Add server-side parsed-mail endpoints `/api/parsed_mails` and `/api/parsed_mail/:id` that return `sender` / `subject` / `text` / `html` / `attachments` metadata directly (reuses `commonParseMail`), so AI agents no longer need a client-side MIME parser
 - feat: |Skill| Bundle a read-only skill `cf-temp-mail-agent-mail` (`skills/cf-temp-mail-agent-mail/`) so AI agents like OpenClaw / Codex / Cursor can consume a mailbox with a user-supplied Address JWT + API base URL — list mails, poll verification codes, etc. — sidestepping the Turnstile challenge required to create a mailbox. Install via `npx degit dreamhunter2333/cloudflare_temp_email/skills/cf-temp-mail-agent-mail`
 - docs: |Docs| Add "AI Agent Mailbox Usage" doc (`guide/feature/agent-email`) covering the `parsed_mail` API and a local-parse fallback using `mail-parser-wasm` + `postal-mime` (mirrors the frontend) when parsed endpoints are unavailable
+- docs: |Docs| Make "a domain is a hard prerequisite" explicit at the top of `quick-start`, `worker-vars`, and `email-routing` (zh + en), spelling out that Cloudflare Email Routing must be enabled with email DNS records provisioned before deployment, the Catch-all rule must be bound after the Worker is deployed, and subdomains do not inherit the parent domain's Email Routing — so users no longer start deploying without a usable domain and end up unable to receive mail (issue #1004)
 
 ### Bug Fixes
 
+- fix: |Frontend| Narrow address-management modal widths and keep address tables horizontally scrollable inside the modal to prevent multi-address lists from stretching the dialog
 - fix: |Frontend| Fix the frontend settings bootstrap throwing an `undefined` error when `/open_api/settings` does not return a `domains` array by normalizing the field to an empty array before mapping it
+- fix: |Frontend| Fix every API call crashing client-side with `Invalid character in header content ["Authorization"]` when stale localStorage credentials (`jwt` / `auth` / `adminAuth` / `userJwt` / `access_token`) are empty, the literal string `"undefined"`, or contain a stray newline or other control character (issue #1000). Adds `safeHeaderValue` / `safeBearerHeader` helpers that validate every auth header against RFC 7230 and omit the header entirely when unsafe, so the worker returns a clean 401 instead of the request being rejected by axios/undici
 
 ### Improvements
 
