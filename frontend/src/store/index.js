@@ -38,8 +38,22 @@ export const useGlobalState = createGlobalState(
             isS3Enabled: false,
             enableSendMail: false,
             showGithub: true,
+            showGithubForUser: true,
             disableAdminPasswordCheck: false,
             enableAddressPassword: false,
+            enableAgentEmailInfo: false,
+            smtpImapProxyConfig: {
+                smtp: {
+                    host: '',
+                    port: 8025,
+                    starttls: false,
+                },
+                imap: {
+                    host: '',
+                    port: 11143,
+                    starttls: false,
+                },
+            },
             statusUrl: '',
             enableGlobalTurnstileCheck: false,
         })
