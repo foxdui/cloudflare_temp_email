@@ -5,8 +5,10 @@ import axios from 'axios'
 import i18n from '../i18n'
 import { getFingerprint } from '../utils/fingerprint'
 import { safeBearerHeader, safeHeaderValue } from '../utils/headers'
+import { sanitizeHtml } from '../utils/sanitize-html'
+import { APP_CONFIG } from '../config'
 
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = APP_CONFIG.API_BASE || "";
 const {
     loading, auth, jwt, settings, openSettings,
     userOpenSettings, userSettings, announcement,
@@ -20,7 +22,8 @@ const instance = axios.create({
 });
 
 const apiFetch = async (path, options = {}) => {
-    loading.value = true;
+    const showLoading = options.showLoading !== false;
+    if (showLoading) loading.value = true;
     try {
         // Get browser fingerprint for request tracking
         const fingerprint = await getFingerprint();
@@ -66,7 +69,7 @@ const apiFetch = async (path, options = {}) => {
         }
         throw error;
     } finally {
-        loading.value = false;
+        if (showLoading) loading.value = false;
     }
 }
 
@@ -98,6 +101,7 @@ const getOpenSettings = async (message, notification) => {
             disableAnonymousUserCreateEmail: res["disableAnonymousUserCreateEmail"] || false,
             disableCustomAddressName: res["disableCustomAddressName"] || false,
             enableUserDeleteEmail: res["enableUserDeleteEmail"] || false,
+            enableMailReadStatus: res["enableMailReadStatus"] === true,
             enableAutoReply: res["enableAutoReply"] || false,
             enableIndexAbout: res["enableIndexAbout"] || false,
             copyright: res["copyright"] || openSettings.value.copyright,
@@ -107,6 +111,8 @@ const getOpenSettings = async (message, notification) => {
             showGithubForUser: res["showGithubForUser"] ?? openSettings.value.showGithubForUser,
             enableAddressPassword: res["enableAddressPassword"] || false,
             enableAgentEmailInfo: res["enableAgentEmailInfo"] || false,
+            enableRedeemCode: res["enableRedeemCode"] || false,
+            redeemCodeUrl: res["redeemCodeUrl"] || "",
             smtpImapProxyConfig: res["smtpImapProxyConfig"] || openSettings.value.smtpImapProxyConfig,
             statusUrl: res["statusUrl"] || "",
             enableGlobalTurnstileCheck: res["enableGlobalTurnstileCheck"] || false,
@@ -123,7 +129,7 @@ const getOpenSettings = async (message, notification) => {
             notification.info({
                 content: () => {
                     return h("div", {
-                        innerHTML: announcement.value
+                        innerHTML: sanitizeHtml(announcement.value)
                     });
                 }
             });

@@ -10,11 +10,12 @@ import { api as userApi } from './user_api';
 import { api as adminApi } from './admin_api';
 import { api as apiSendMail } from './mails_api/send_mail_api'
 import { api as telegramApi } from './telegram_api'
+import { api as redeemApi } from './redeem_api'
 
 import i18n from './i18n';
 import { email } from './email';
 import { scheduled } from './scheduled';
-import { getPasswords, getBooleanValue, getDomains, checkIsAdmin } from './utils';
+import { getPasswords, getBooleanValue, getDomains, checkIsAdmin, getEnvStringList } from './utils';
 import { checkAccessControl } from './ip_blacklist';
 
 const API_PATHS = [
@@ -24,6 +25,7 @@ const API_PATHS = [
 	"/admin/",
 	"/telegram/",
 	"/external/",
+	"/redeem_api/",
 ];
 
 const app = new Hono<HonoCustomType>()
@@ -53,7 +55,10 @@ app.use('/*', async (c, next) => {
 
 	// check header x-custom-auth
 	const passwords = getPasswords(c);
-	if (!c.req.path.startsWith("/open_api") && !c.req.path.startsWith("/telegram/") && passwords && passwords.length > 0) {
+	if (!c.req.path.startsWith("/open_api")
+		&& !c.req.path.startsWith("/telegram/")
+		&& passwords && passwords.length > 0
+	) {
 		const auth = c.req.raw.headers.get("x-custom-auth");
 		if (!auth || !passwords.includes(auth)) {
 			return c.text(msgs.CustomAuthPasswordMsg, 401)
@@ -65,8 +70,10 @@ app.use('/*', async (c, next) => {
 		c.req.path.startsWith("/api/new_address")
 		|| c.req.path.startsWith("/api/send_mail")
 		|| c.req.path.startsWith("/external/api/send_mail")
+		|| (c.req.path.startsWith("/user_api/address/") && c.req.path.endsWith("/send_mail"))
 		|| c.req.path.startsWith("/user_api/register")
 		|| c.req.path.startsWith("/user_api/verify_code")
+		|| c.req.path.startsWith("/redeem_api/")
 	) {
 		const reqIp = c.req.raw.headers.get("cf-connecting-ip")
 		if (reqIp && c.env.RATE_LIMITER) {
@@ -125,7 +132,8 @@ const checkUserPayload = async (
 }
 
 const checkoutUserRolePayload = async (
-	c: Context<HonoCustomType>
+	c: Context<HonoCustomType>,
+	userId?: number
 ): Promise<void> => {
 	try {
 		const token = c.req.raw.headers.get("x-user-access-token");
@@ -138,6 +146,7 @@ const checkoutUserRolePayload = async (
 			return;
 		}
 		if (typeof payload?.user_role !== "string") return;
+		if (userId !== undefined && payload.user_id !== userId) return;
 		c.set("userRolePayload", payload.user_role);
 	} catch (e) {
 		console.error(e);
@@ -202,8 +211,12 @@ app.use('/user_api/*', async (c, next) => {
 		console.error(e);
 		return c.text(msgs.UserTokenExpiredMsg, 401)
 	}
-	if (c.req.path.startsWith("/user_api/bind_address")) {
-		await checkoutUserRolePayload(c);
+	if (
+		c.req.path.startsWith("/user_api/bind_address")
+		|| c.req.path.startsWith("/user_api/address/")
+	) {
+		const { user_id } = c.get("userPayload");
+		await checkoutUserRolePayload(c, user_id);
 	}
 	if (c.req.path.startsWith('/user_api/bind_address')
 		&& c.req.method === 'POST'
@@ -214,14 +227,28 @@ app.use('/user_api/*', async (c, next) => {
 });
 // admin auth
 app.use('/admin/*', async (c, next) => {
+	const lang = c.req.raw.headers.get("x-lang") || c.env.DEFAULT_LANG;
+	const msgs = i18n.getMessages(lang);
+	try {
+		const ipWhitelist = getEnvStringList(c.env.ADMIN_API_IP_WHITELIST)
+			.filter(ip => typeof ip === "string")
+			.map(ip => ip.trim())
+			.filter(Boolean);
+		if (ipWhitelist.length > 0) {
+			const reqIp = c.req.raw.headers.get("cf-connecting-ip")?.trim();
+			if (!reqIp || !ipWhitelist.includes(reqIp)) {
+				return c.text(msgs.AdminApiIpNotAllowedMsg, 403);
+			}
+		}
+	} catch (e) {
+		console.error("Failed to check admin API IP whitelist", e);
+	}
 
 	// check header x-admin-auth
 	if (checkIsAdmin(c)) {
 		await next();
 		return;
 	}
-	const lang = c.req.raw.headers.get("x-lang") || c.env.DEFAULT_LANG;
-	const msgs = i18n.getMessages(lang);
 	// check if user is admin
 	const access_token = c.req.raw.headers.get("x-user-access-token");
 	if (c.env.ADMIN_USER_ROLE && access_token) {
@@ -260,6 +287,7 @@ app.route('/', userApi)
 app.route('/', adminApi)
 app.route('/', apiSendMail)
 app.route('/', telegramApi)
+app.route('/', redeemApi)
 
 const health_check = async (c: Context<HonoCustomType>) => {
 	const lang = c.req.raw.headers.get("x-lang") || c.env.DEFAULT_LANG;
